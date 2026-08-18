@@ -28,7 +28,9 @@ package me.lucko.bungeeguard.spigot;
 import me.lucko.bungeeguard.backend.BungeeGuardBackend;
 import me.lucko.bungeeguard.backend.TokenStore;
 import me.lucko.bungeeguard.spigot.listener.PaperHandshakeListener;
-import me.lucko.bungeeguard.spigot.listener.ProtocolHandshakeListener;
+import me.lucko.bungeeguard.spigot.listener.PacketEventsHandshakeListener;
+import com.github.retrooper.packetevents.PacketEvents;
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -50,7 +52,16 @@ public class BungeeGuardBackendPlugin extends JavaPlugin implements BungeeGuardB
     private TokenStore tokenStore;
 
     @Override
+    public void onLoad() {
+        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
+        PacketEvents.getAPI().getSettings().checkForUpdates(false).bStats(false);
+        PacketEvents.getAPI().load();
+    }
+
+    @Override
     public void onEnable() {
+        PacketEvents.getAPI().init();
+
         saveDefaultConfig();
         this.tokenStore = new TokenStore(this);
         this.tokenStore.load();
@@ -72,25 +83,18 @@ public class BungeeGuardBackendPlugin extends JavaPlugin implements BungeeGuardB
             PaperHandshakeListener listener = new PaperHandshakeListener(this, this.tokenStore);
             getServer().getPluginManager().registerEvents(listener, this);
 
-        } else if (hasProtocolLib()) {
-            getLogger().info("Using ProtocolLib to listen for connections.");
+        } else {
+            getLogger().info("Using PacketEvents to listen for connections.");
 
-            ProtocolHandshakeListener listener = new ProtocolHandshakeListener(this, this.tokenStore);
+            PacketEventsHandshakeListener listener = new PacketEventsHandshakeListener(this, this.tokenStore);
             listener.registerAdapter(this);
 
-        } else {
-            getLogger().severe("------------------------------------------------------------");
-            getLogger().severe("BungeeGuard is unable to listen for handshakes! The server will now shut down.");
-            getLogger().severe("");
-            if (isPaperServer()) {
-                getLogger().severe("Please install ProtocolLib in order to use this plugin.");
-            } else {
-                getLogger().severe("If your server is using 1.9.4 or newer, please upgrade to Paper - https://papermc.io");
-                getLogger().severe("If your server is using 1.8.8 or older, please install ProtocolLib.");
-            }
-            getLogger().severe("------------------------------------------------------------");
-            getServer().shutdown();
         }
+    }
+
+    @Override
+    public void onDisable() {
+        PacketEvents.getAPI().terminate();
     }
 
     private boolean isBungeeCordEnabled() {
@@ -133,10 +137,6 @@ public class BungeeGuardBackendPlugin extends JavaPlugin implements BungeeGuardB
 
     private static boolean isPaperServer() {
         return classExists("com.destroystokyo.paper.PaperConfig");
-    }
-
-    private boolean hasProtocolLib() {
-        return getServer().getPluginManager().getPlugin("ProtocolLib") != null;
     }
 
     private static boolean classExists(String className) {
